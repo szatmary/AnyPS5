@@ -20,7 +20,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <immintrin.h>
+#include "prx/libc/include/GuestCpu.hpp"
+#include "prx/libc/include/PreciseWait.hpp"
 #include <memory>
 #include <mutex>
 #include <span>
@@ -816,17 +817,17 @@ bool RunOne(Manager& manager, std::unique_lock<std::mutex>& guard) {
 void* APS5_VABI WorkerEntry(void* argument) {
     Manager& manager = *static_cast<Manager*>(argument);
     currentWorker = &manager;
-    std::uint64_t lastWork = __rdtsc();
+    std::uint64_t lastWork = GuestCpu::ReadTsc();
     std::unique_lock guard(manager.lock);
     while (manager.running) {
         if (RunOne(manager, guard)) {
-            lastWork = __rdtsc();
+            lastWork = GuestCpu::ReadTsc();
             continue;
         }
-        const bool spinning = manager.pendingInvocations != 0 && __rdtsc() - lastWork < manager.spinTicks;
+        const bool spinning = manager.pendingInvocations != 0 && GuestCpu::ReadTsc() - lastWork < manager.spinTicks;
         if (spinning || manager.sleepingWorkers >= manager.workerCount - manager.persistentThreads) {
             guard.unlock();
-            _mm_pause();
+            PreciseSpinPause();
             guard.lock();
             continue;
         }
