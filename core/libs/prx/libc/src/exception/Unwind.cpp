@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 #endif
-#if defined(__linux__) && defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 35))
+#if defined(__linux__) && defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 35)) && !defined(ANYPS5_GUEST_LIFTED)
 #define LIBC_UNWIND_FIND_OBJECT 1
 #include <dlfcn.h>
 #include <map>
@@ -338,12 +338,7 @@ bool VirtualUnwind(_Unwind_Context& context, Frame& frame) {
 
 bool DecodeFrame(_Unwind_Context& context, Frame& frame) {
     Lookup query {context.registers[16] - !context.signalFrame};
-#if defined(ANYPS5_GUEST_LIFTED)
-    const void* header = nullptr;
-    if (!GuestCpuUnwindTables_nid_no_patch(query.pc, &header, &query.text, &query.data) || static_cast<const Byte*>(header)[0] != 1) return false;
-    SearchHeader(static_cast<const Byte*>(header), query);
-    return query.fde != nullptr && DecodeCandidate(context, frame, query);
-#elif defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__)
 #ifdef LIBC_UNWIND_FIND_OBJECT
     if (!FindFrameFast(query))
 #endif
