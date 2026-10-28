@@ -102,6 +102,17 @@ APR and AMM each have their own queue and worker thread. Order is kept inside a 
 
 [`GuestAmpr.cpp`](../../core/libs/tests/GuestAmpr.cpp) checks both cases: a submit whose wait is satisfied afterwards returns and keeps buffer order, and an AMM buffer submitted after a waiting APR buffer still completes.
 
+## Networking
+
+Networking is off unless `APS5_NETWORK=1`. The libraries reach the host's network only through [HostNetwork.hpp](../../core/libs/prx/libkernel/Socket/include/HostNetwork.hpp), in place of the host's `connect`, `bind`, `sendto`, `getaddrinfo`, `getnameinfo`, `gethostbyname` and `gethostbyname_r`, so a title sees a console without a connection whose only interface is loopback:
+
+- A connection or datagram to an address other than loopback or the unspecified address fails with `ENETUNREACH`, as on a host without a route, and each library reports that with its own error.
+- Only numeric hosts and `localhost` resolve; another name fails as a lookup without a reachable name server does (`EAI_AGAIN`, which libSceNet's resolver reports as `SCE_NET_ERROR_RESOLVER_ENODNS`). A reverse lookup of another address gives its numeric form, or fails if it requires a name.
+- A socket bound to every address is bound to loopback, so nothing outside the host reaches it, and one bound to another address fails with `EADDRNOTAVAIL`.
+- libSceNetCtl reports the state `DISCONNECTED`, its information and NAT queries fail with `SCE_NET_CTL_ERROR_NOT_CONNECTED` and it sends no STUN probe, and `getifaddrs` lists only loopback interfaces.
+
+Loopback still reaches the host's own services. `sceHttp2` stops when a name does not resolve, since its console error is not known, so its requests stop rather than fail without networking.
+
 ## Graphics
 
 ```mermaid

@@ -34,6 +34,7 @@
 #include "prx/libc/include/PreciseWait.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
 #include "prx/libc/include/HostThreadLocal.hpp"
+#include "prx/libkernel/Socket/include/HostNetwork.hpp"
 #include "prx/libkernel/Socket/include/SocketError.hpp"
 #include "prx/libkernel/Socket/include/SocketOptions.hpp"
 #include "prx/libkernel/Socket/include/SocketRuntime.hpp"
@@ -155,9 +156,9 @@ struct Waker {
 #else
         const bool configured = value != Invalid && ::fcntl(value, F_SETFL, ::fcntl(value, F_GETFL) | O_NONBLOCK) == 0;
 #endif
-        if (!configured || bind(value, reinterpret_cast<sockaddr*>(&address), size) != 0 ||
+        if (!configured || HostNetwork::Bind(value, reinterpret_cast<sockaddr*>(&address), size) != 0 ||
             getsockname(value, reinterpret_cast<sockaddr*>(&address), &size) != 0 ||
-            connect(value, reinterpret_cast<sockaddr*>(&address), size) != 0) {
+            HostNetwork::Connect(value, reinterpret_cast<sockaddr*>(&address), size) != 0) {
             const int error = NativeError();
             Close();
             throw std::runtime_error("equeue waker: loopback socket setup failed, guest errno " + std::to_string(error));
@@ -351,11 +352,11 @@ int Disconnect(const Socket& socket) {
 #ifdef _WIN32
     sockaddr_storage unspecified{};
     unspecified.ss_family = local.ss_family;
-    if (::connect(socket.value, reinterpret_cast<sockaddr*>(&unspecified), localSize) != 0) return Fail(NativeError());
+    if (HostNetwork::Connect(socket.value, reinterpret_cast<sockaddr*>(&unspecified), localSize) != 0) return Fail(NativeError());
 #else
     sockaddr unspecified{};
     unspecified.sa_family = AF_UNSPEC;
-    if (::connect(socket.value, &unspecified, sizeof(unspecified)) != 0) return Fail(NativeError());
+    if (HostNetwork::Connect(socket.value, &unspecified, sizeof(unspecified)) != 0) return Fail(NativeError());
 #endif
     sockaddr_storage current{};
     socklen_t currentSize = sizeof(current);
@@ -364,7 +365,7 @@ int Disconnect(const Socket& socket) {
     sockaddr_storage wildcard{};
     wildcard.ss_family = local.ss_family;
     PortOf(wildcard) = PortOf(local);
-    if (::bind(socket.value, reinterpret_cast<sockaddr*>(&wildcard), localSize) != 0) return Fail(NativeError());
+    if (HostNetwork::Bind(socket.value, reinterpret_cast<sockaddr*>(&wildcard), localSize) != 0) return Fail(NativeError());
     return 0;
 }
 bool ZeroPortConnect(const Socket& socket, const void* address, std::uint32_t length) {
@@ -824,14 +825,14 @@ int NativePair(int type, NativeSocket (&pair)[2]) {
     if (first.value == Invalid) return NativeError();
     const int exclusive = 1;
     setsockopt(first.value, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&exclusive), sizeof(exclusive));
-    if (bind(first.value, reinterpret_cast<sockaddr*>(&loopback), sizeof(loopback))) return NativeError();
+    if (HostNetwork::Bind(first.value, reinterpret_cast<sockaddr*>(&loopback), sizeof(loopback))) return NativeError();
     sockaddr_in firstName{};
     if (!LoopbackName(first.value, firstName)) return NativeError();
     Socket second(::socket(AF_INET, nativeType, 0), 2, type);
     if (second.value == Invalid) return NativeError();
     if (type == 1) {
         if (listen(first.value, 1)) return NativeError();
-        if (connect(second.value, reinterpret_cast<sockaddr*>(&firstName), sizeof(firstName))) return NativeError();
+        if (HostNetwork::Connect(second.value, reinterpret_cast<sockaddr*>(&firstName), sizeof(firstName))) return NativeError();
         sockaddr_in peer{};
         int peerSize = sizeof(peer);
         Socket accepted(accept(first.value, reinterpret_cast<sockaddr*>(&peer), &peerSize), 2, type);
@@ -848,11 +849,11 @@ int NativePair(int type, NativeSocket (&pair)[2]) {
         accepted.value = Invalid;
         return 0;
     }
-    if (bind(second.value, reinterpret_cast<sockaddr*>(&loopback), sizeof(loopback))) return NativeError();
+    if (HostNetwork::Bind(second.value, reinterpret_cast<sockaddr*>(&loopback), sizeof(loopback))) return NativeError();
     sockaddr_in secondName{};
     if (!LoopbackName(second.value, secondName)) return NativeError();
-    if (connect(first.value, reinterpret_cast<sockaddr*>(&secondName), sizeof(secondName))) return NativeError();
-    if (connect(second.value, reinterpret_cast<sockaddr*>(&firstName), sizeof(firstName))) return NativeError();
+    if (HostNetwork::Connect(first.value, reinterpret_cast<sockaddr*>(&secondName), sizeof(secondName))) return NativeError();
+    if (HostNetwork::Connect(second.value, reinterpret_cast<sockaddr*>(&firstName), sizeof(firstName))) return NativeError();
     pair[0] = first.value;
     pair[1] = second.value;
     first.value = Invalid;
@@ -1321,7 +1322,7 @@ int APS5_VABI connect_nid_postfix(int descriptor, const void* address, std::uint
         std::lock_guard lock(socket->modeMutex);
         socket->options.reportedError = 0;
     }
-    return ::connect(socket->value, reinterpret_cast<sockaddr*>(&native), size) ? Fail(ConnectError()) : 0;
+    return HostNetwork::Connect(socket->value, reinterpret_cast<sockaddr*>(&native), size) ? Fail(ConnectError()) : 0;
 }
 int APS5_VABI listen_nid_postfix(int descriptor, int backlog) {
     const auto socket = Lookup(descriptor);
@@ -1409,7 +1410,7 @@ int APS5_VABI bind_nid_postfix(int descriptor, const void* address, std::uint32_
     const int mapped = LongMappedDualStack(*socket, address, length);
     if (mapped < 0) return -1;
     if (!Address(socket->family, address, mapped ? 28 : length, native, size)) return -1;
-    return ::bind(socket->value, reinterpret_cast<sockaddr*>(&native), size) ? Fail(NativeError()) : 0;
+    return HostNetwork::Bind(socket->value, reinterpret_cast<sockaddr*>(&native), size) ? Fail(NativeError()) : 0;
 }
 namespace {
 bool AlreadyShut(NativeSocket socket, int how) {
@@ -1527,7 +1528,7 @@ std::int64_t APS5_VABI sendto_nid_postfix(int descriptor, const void* buffer, st
         socklen_t size;
         if (!Address(socket->family, address, addressLength, native, size)) return -1;
         if (const auto answered = ZeroPortSend(*socket, native, length); answered != NotAnswered) return answered;
-        result = static_cast<int>(::sendto(socket->value, static_cast<const char*>(buffer), static_cast<int>(length), SocketSendFlags(*socket, flags),
+        result = static_cast<int>(HostNetwork::SendTo(socket->value, static_cast<const char*>(buffer), static_cast<int>(length), SocketSendFlags(*socket, flags),
             reinterpret_cast<sockaddr*>(&native), size));
     }
     return result < 0 ? Fail(SendError(socket->type)) : result;

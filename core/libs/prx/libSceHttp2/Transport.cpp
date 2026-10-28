@@ -11,6 +11,7 @@
 #include "prx/libSceNet/include/Net.hpp"
 #include "prx/libSceSsl/include/Ssl.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libkernel/Socket/include/HostNetwork.hpp"
 #include "prx/libkernel/Socket/include/SocketPoll.hpp"
 #include <nghttp2/nghttp2.h>
 #include <algorithm>
@@ -163,7 +164,7 @@ private:
                 hints.ai_family = AF_UNSPEC;
                 addrinfo* raw = nullptr;
                 const auto service = std::to_string(job->port);
-                const int result = getaddrinfo(job->host.c_str(), service.c_str(), &hints, &raw);
+                const int result = HostNetwork::GetAddrInfo(job->host.c_str(), service.c_str(), &hints, &raw);
                 std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> addresses(raw, freeaddrinfo);
                 Require(result == 0, "sceHttp2: DNS failed; console error mapping is unknown");
                 for (auto* entry = raw; entry; entry = entry->ai_next) {

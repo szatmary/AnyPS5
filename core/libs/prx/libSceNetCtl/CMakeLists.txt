@@ -18,7 +18,7 @@ if(BUILD_TESTING)
     target_link_libraries(guest_net_ctl_tests PRIVATE libSceNetCtl libc)
     configure_windows_unwind(guest_net_ctl_tests)
     add_test(NAME guest_net_ctl COMMAND guest_net_ctl_tests)
-    set_tests_properties(guest_net_ctl PROPERTIES TIMEOUT 20 SKIP_RETURN_CODE 77)
+    set_tests_properties(guest_net_ctl PROPERTIES TIMEOUT 20 SKIP_RETURN_CODE 77 ENVIRONMENT APS5_NETWORK=1)
     if(WIN32)
         target_link_libraries(guest_net_ctl_tests PRIVATE ws2_32)
         set_tests_properties(guest_net_ctl PROPERTIES ENVIRONMENT_MODIFICATION

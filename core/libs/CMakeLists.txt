@@ -750,6 +750,16 @@ if(BUILD_TESTING)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceNetCtlAp>")
     endif()
 
+    add_test_executable(guest_network_offline_tests tests/GuestNetworkOffline.cpp)
+    target_include_directories(guest_network_offline_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(guest_network_offline_tests PRIVATE libSceNetCtl libScePosixForWebKit libkernel libc)
+    configure_windows_unwind(guest_network_offline_tests)
+    add_test(NAME guest_network_offline COMMAND guest_network_offline_tests)
+    if(WIN32)
+        set_tests_properties(guest_network_offline PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libkernel>")
+    endif()
+
     add_test_executable(guest_netctl_ap_dialog_tests tests/GuestNetCtlApDialog.cpp)
     target_include_directories(guest_netctl_ap_dialog_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(guest_netctl_ap_dialog_tests PRIVATE libSceNetCtlApDialog libc)

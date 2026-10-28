@@ -754,6 +754,7 @@ if(BUILD_TESTING)
     target_link_libraries(guest_interface_tests PRIVATE libc)
     configure_windows_unwind(guest_interface_tests)
     add_test(NAME guest_interfaces COMMAND guest_interface_tests)
+    set_tests_properties(guest_interfaces PROPERTIES ENVIRONMENT APS5_NETWORK=1)
     if(WIN32)
         target_link_libraries(guest_interface_tests PRIVATE ws2_32 iphlpapi)
         set_tests_properties(guest_interfaces PROPERTIES ENVIRONMENT_MODIFICATION
