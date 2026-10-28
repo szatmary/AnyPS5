@@ -13,9 +13,9 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
-#include <xmmintrin.h>
 
 #include "prx/libc/include/General.hpp"
+#include "prx/libc/include/GuestCpu.hpp"
 #include "prx/libc/include/SonyCrt.hpp"
 
 namespace {
@@ -1754,8 +1754,7 @@ float APS5_VABI modff_nid_postfix(float x, float* integral) {
     if (exponent >= 150u) {
         *integral = x;
         if (exponent == 0xffu && (bits & 0x7fffffu) != 0) {
-            volatile int unordered = _mm_ucomieq_ss(_mm_set_ss(x), _mm_setzero_ps());
-            (void)unordered;
+            if ((bits & 0x400000u) == 0) GuestCpu::SetMxcsr(GuestCpu::Mxcsr() | 1u);
             return x;
         }
         return zero;
@@ -2013,38 +2012,35 @@ static_assert(sizeof(GuestFloatingPointEnvironment) == 32 && alignof(GuestFloati
 int APS5_VABI feupdateenv_nid_postfix(const GuestFloatingPointEnvironment* environment) {
     if (environment == nullptr) throw std::invalid_argument("feupdateenv: null environment");
     const auto saved = *environment;
-    alignas(16) std::array<std::uint32_t, 128> state;
-    asm volatile("fxsave %0" : "=m"(state));
-    const auto supported = state[7] != 0 ? state[7] : 0xffbfu;
-    if ((saved.mxcsr & ~supported) != 0) throw std::invalid_argument("feupdateenv: unsupported MXCSR bits");
-    std::uint16_t status;
-    asm volatile("fnstsw %0" : "=am"(status));
-    const auto pending = (status | _mm_getcsr()) & 0x3f;
-    asm volatile("fldenv %0" : : "m"(saved) : "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)");
-    _mm_setcsr(saved.mxcsr);
-    GuestFloatingPointEnvironment raised;
-    asm volatile("fnstenv %0" : "=m"(raised));
-    raised.status |= pending;
-    const auto mxcsr = _mm_getcsr() | pending;
-    asm volatile("fldenv %0" : : "m"(raised) : "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)");
-    _mm_setcsr(mxcsr);
-    asm volatile("fwait");
+    if ((saved.mxcsr & ~GuestCpu::MxcsrMask()) != 0) throw std::invalid_argument("feupdateenv: unsupported MXCSR bits");
+    const auto pending = (GuestCpu::X87Status() | GuestCpu::Mxcsr()) & 0x3f;
+    std::array<std::uint32_t, 7> x87;
+    std::memcpy(x87.data(), &saved, sizeof(x87));
+    GuestCpu::SetX87Environment(x87);
+    GuestCpu::SetMxcsr(saved.mxcsr);
+    GuestCpu::SetX87Status(static_cast<std::uint16_t>(GuestCpu::X87Status() | pending));
+    GuestCpu::SetMxcsr(GuestCpu::Mxcsr() | pending);
+    GuestCpu::X87Wait();
     return 0;
 }
 
 int APS5_VABI fegetenv_nid_postfix(GuestFloatingPointEnvironment* environment) {
     if (environment == nullptr) throw std::invalid_argument("fegetenv: null environment");
-    asm volatile("fnstenv %0\n\tfldcw %0" : "+m"(*environment));
-    environment->mxcsr = _mm_getcsr();
+    const auto x87 = GuestCpu::X87Environment();
+    std::memcpy(environment, x87.data(), sizeof(x87));
+    environment->mxcsr = GuestCpu::Mxcsr();
     return 0;
 }
 
 int APS5_VABI feholdexcept_nid_postfix(GuestFloatingPointEnvironment* environment) {
     if (environment == nullptr) throw std::invalid_argument("feholdexcept: null environment");
-    const auto csr = _mm_getcsr();
-    asm volatile("fnstenv %0\n\tfnclex" : "=m"(*environment));
+    const auto csr = GuestCpu::Mxcsr();
+    const auto x87 = GuestCpu::X87Environment();
+    std::memcpy(environment, x87.data(), sizeof(x87));
+    GuestCpu::X87ClearExceptions();
+    GuestCpu::SetX87Control(static_cast<std::uint16_t>(x87[0] | 0x3fu));
     environment->mxcsr = csr;
-    _mm_setcsr((csr & ~0x3fu) | 0x1f80u);
+    GuestCpu::SetMxcsr((csr & ~0x3fu) | 0x1f80u);
     return 0;
 }
 
