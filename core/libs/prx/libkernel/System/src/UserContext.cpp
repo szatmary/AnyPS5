@@ -8,6 +8,31 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+
+#ifdef ANYPS5_GUEST_LIFTED
+
+extern "C" {
+
+int APS5_VABI getcontext_nid_postfix(UserUcontext*) {
+    NotImplemented_nid_no_patch("getcontext for a lifted guest, which needs guest context switching");
+}
+
+int APS5_VABI swapcontext_nid_postfix(UserUcontext*, const UserUcontext*) {
+    NotImplemented_nid_no_patch("swapcontext for a lifted guest, which needs guest context switching");
+}
+
+int APS5_VABI setcontext_nid_postfix(const UserUcontext*) {
+    NotImplemented_nid_no_patch("setcontext for a lifted guest, which needs guest context switching");
+}
+
+int SigreturnContext_nid_no_patch(const UserUcontext*) {
+    NotImplemented_nid_no_patch("sigreturn for a lifted guest, which needs guest context switching");
+}
+
+}
+
+#else
+
 #include <immintrin.h>
 
 namespace {
@@ -281,3 +306,5 @@ int APS5_VABI Aps5SwapcontextFinish_nid_no_patch(UserUcontext* saved, const User
 }
 
 }
+
+#endif
